@@ -14,13 +14,17 @@ green = (0, 255, 0)
 mat_green = (46, 184, 46)
 blue = (0, 0, 255)
 mat_blue = (0, 102, 255)
+child_node_blue = (70, 104, 163, 50)
+path_cell_yellow = (203, 212, 40)
 mat_red = (255, 80, 80)
-player = None
-destination = None
+bot = None
+# destination = None
 open_queue = []
 close_queue = []
 wall_cells = []
 goal_cells = []
+path = []
+found_goal_cell = None
 bot_init_cell = None
 window = None 
 play_area_rect = None
@@ -29,15 +33,7 @@ run_button = None
 wall_button = None
 bot_button = None
 goal_button = None
-cliked_button = None
-
-def initialize_player(window, cell_x, cell_y):
-    global player
-    player = pygame.draw.rect(window, blue, pygame.Rect(cell_x * line_width, cell_y * line_width, line_width, line_width))
-
-def draw_destination(window, cell_x, cell_y):
-    global destination
-    destination = pygame.draw.rect(window, green, pygame.Rect(cell_x * line_width, cell_y * line_width, line_width, line_width))
+clicked_button = None
 
 def create_play_and_menu_area_sections():
     global play_area_rect, menu_area_rect
@@ -74,14 +70,12 @@ def draw_menus():
     
 
 def main():
-    global window, size, num_rows, player, destination, play_area_rect, menu_area_rect
+    global window, size, num_rows, bot, play_area_rect, menu_area_rect, clicked_button
 
     window = pygame.display.set_mode((size, size + menu_height))
     window.fill(black) # fill windows with black color
     create_play_and_menu_area_sections()
     draw_grid(window, size, num_rows) # grid will not change (no need to redraw)
-    # draw_destination(window, 3, 3) # destination does not change (no need to redraw)
-    # initialize_player(window, 0, 0)
     draw_menus()
 
     
@@ -103,88 +97,101 @@ def main():
                     x, y = pygame.mouse.get_pos()
                     if menu_area_rect.collidepoint(pygame.mouse.get_pos()):
                         check_if_menu_button_pressed(x, y)
+                        if clicked_button == 'run':
+                            cliked_button = None
+                            print("run clicked")
+                            if(len(goal_cells) > 0 and bot is not None):
+                                print("calling breadh firs search")
+                                search_in_breadth_first_approach()
                     elif play_area_rect.collidepoint(pygame.mouse.get_pos()):
-                        if cliked_button == 'wall':
+                        if clicked_button == 'wall':
                             create_wall_cell(x, y)
-                        elif cliked_button == 'goal':
+                        elif clicked_button == 'goal':
                             create_goal_cell(x, y)
-                        elif cliked_button == 'bot':
-                            create_bot(x, y)
-                        elif cliked_button == 'run':
-                            create_wall_cell(x, y)
+                        elif clicked_button == 'bot':
+                            create_bot(x, y)                          
         
         pygame.display.update()
 
 
-    # pygame.display.update() # update display
-    # R, G, B, Alpha = window.get_at((126,126))
-    # print("Red: ", R, ", Green: ", G, ", Blue: ", B, ", Alpha: ", Alpha)
-    # clock.tick(1)
-    # clock.tick(1)
-    # clock.tick(1)
-    # clock.tick(1)
-    # clock.tick(1)
-    # clock.tick(1)
-    # clock.tick(1)
-    # clock.tick(1)
-
-
-
-
-    # search_in_breadth_first_approach()
-
-
 def search_in_breadth_first_approach():
-    print("x is: ", player.x, "y is: ", player.y)
-    bot_current_cell_number = get_cell_number(player.x, player.y)
-    destination_cell_number = get_cell_number(destination.x, destination.y)
+    global bot, goal_cells, path
+    print("x is: ", bot.x, "y is: ", bot.y)
+    bot_current_cell_number = get_cell_number(bot.x, bot.y)
+    
+    # putting the intial bot position to open queue
+    open_queue.append(bot_current_cell_number)
 
-    open_queue.append(bot_current_cell_number) # putting the intial bot position to open queue
-
-    play = True
-    while play: # main loop
+    processing = True
+    find_path = False
+    while processing: # main loop
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 exit()
-            
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                mouse_presses = pygame.mouse.get_pressed()
-                if mouse_presses[0]:
-                    create_wall_cell(pygame.mouse.get_pos())
     
-        bot_current_cell_number = open_queue.pop(0) # remove and get first element of open_queue
-
-        if(len(close_queue) > 0):  # check if atleast one time moved
-            can_go = verify_can_navigate_to_this_from_previous_cell(close_queue[-1], bot_current_cell_number) # end of close_queue is previous cell  
-        else:
-            can_go = True
-
-        if (can_go):
-            # check if this cell allready visited
-            if(bot_current_cell_number in close_queue):
+        if len(open_queue) > 0 :
+            current_node_cell = open_queue.pop(0) # remove and get first element of open_queue
+            
+            # check if this cell allready processed
+            if(current_node_cell in close_queue):
                 continue
 
-            print("current cell number is: ", bot_current_cell_number)
-
-            # move the bot to this new current cell
-            move_bot(bot_current_cell_number)
-            clock.tick(1)
-            pygame.display.update() # update display
+            print("current cell number is: ", current_node_cell)
+            print("goal cell/s is/are at: ", goal_cells)
 
             # cheking for goal
-            if (bot_current_cell_number == destination_cell_number):
-                print("yeeeeeey, came to destination!!")
-                clock.tick(1)
-                # stay some time here without closing the windoew 
-                return close_queue # returning close queue because from that we can get the trace / path
-        else:
-            continue
+            if (current_node_cell in goal_cells):
+                # add the goal cell to close queue too, this is helpfull to find the path
+                close_queue.append(current_node_cell)
+                found_goal_cell = current_node_cell # there can be many goal cell, this is the one found first.
+                print("goal found, now find the path from close_queue, close_queue is:", close_queue)
+                processing = False
+                find_path = True
+                clock.tick(2) # stay some time here without closing the windoew
+            else:
+                # goal not found, continue processing
+                child_node_cells = get_child_nodes(current_node_cell) # find possible child cells nodes to process
+                close_queue.append(current_node_cell) # putting the processed node to closed queue
 
-        # goal not found, continue processing
-        sorrounding_cells = get_child_nodes(bot_current_cell_number) # find next possible cells to move
-        open_queue.extend(sorrounding_cells) # add children to END OF THE OPEN QUEUE (BFS)
-        close_queue.append(bot_current_cell_number) # putting the processed node to closed queue
-        print("open queue: ", open_queue, "\n")
+                # add child nodes to open queue only if they are already not in both open_queue and close_queue
+                print("childe nodes: ", child_node_cells)
+                for child_node in child_node_cells:
+                    if child_node not in open_queue and child_node not in close_queue:
+                        open_queue.append(child_node) # add children to END OF THE OPEN QUEUE (BFS)
+                print("open queue: ", open_queue, "open_queue length: ", len(open_queue), "\n")
+
+                paint_child_node_cells(child_node_cells)
+            
+
+        else:
+            print("no nodes to processe, open_queue length: ", len(open_queue), ", open queue: ", open_queue)
+            print("closed queue (processed nodes) : ", close_queue)
+            return close_queue
+    
+    dead_end_nodes = []
+    while find_path:
+        path.append(close_queue[0]) # put the bot starting cell to path.
+
+        for i in range(len(close_queue) -1):
+            from_cell = path[-1]
+            to_cell = close_queue[i+1]
+
+            if to_cell in dead_end_nodes:
+                continue
+
+            print("finding path, from_Cell: ", from_cell, ", try to_cell: ", to_cell)
+            if verify_to_cell_is_navigatable_from_from_cell(from_cell, to_cell):
+                path.append(to_cell)
+        
+        if path[-1] == found_goal_cell:
+            find_path = False
+        else:
+            # a dead end has occured, start finding path avoiding this dead end cell
+            dead_end_nodes.append(path[-1])
+            path = [] # to start again
+
+        
+    paint_path(path)
 
 
 def get_cell_number(x, y):
@@ -205,16 +212,17 @@ def get_cell_number(x, y):
 
 
 def check_if_menu_button_pressed(x, y):
-    global run_button, wall_button, bot_button, goal_button, cliked_button
+    global run_button, wall_button, bot_button, goal_button, clicked_button
 
     if run_button.collidepoint(pygame.mouse.get_pos()):
-        cliked_button = 'run'
+        clicked_button = 'run'
+        print("run clicccc")
     elif wall_button.collidepoint(pygame.mouse.get_pos()):
-        cliked_button = 'wall'
+        clicked_button = 'wall'
     elif bot_button.collidepoint(pygame.mouse.get_pos()):
-        cliked_button = 'bot'
+        clicked_button = 'bot'
     elif goal_button.collidepoint(pygame.mouse.get_pos()):
-        cliked_button = 'goal'
+        clicked_button = 'goal'
 
 
 def create_wall_cell(x, y):
@@ -247,7 +255,7 @@ def create_goal_cell(x, y):
 
 
 def create_bot(x, y):
-    global window, bot_init_cell
+    global window, bot_init_cell, bot
     if bot_init_cell is not None: # remove allready place bot
         cell_x, cell_y = get_top_left_cordinates_given_cell_number(bot_init_cell)
         pygame.draw.rect(window, black, pygame.Rect(cell_x, cell_y, line_width, line_width))   
@@ -255,26 +263,26 @@ def create_bot(x, y):
     cell_x, cell_y = get_top_left_cordinates_given_cell_number(cell_no)
     print("cell number is: ", cell_no, ", type is: ", type(cell_no))   
     bot_init_cell = cell_no   
-    pygame.draw.rect(window, mat_blue, pygame.Rect(cell_x, cell_y, line_width, line_width))
-    draw_grid(window, size, num_rows) # adjust grid lines disapear, hence redraw
+    bot = pygame.draw.rect(window, mat_blue, pygame.Rect(cell_x, cell_y, line_width, line_width))
+    draw_grid(window, size, num_rows) # adjacent grid lines disapear, hence redraw
 
 
 def get_child_nodes(cell_number):
     children = []
     up = get_up_cell(cell_number)
-    if up is not None:
+    if up is not None and up not in wall_cells:
         children.append(up)
 
     right = get_right_cell(cell_number)
-    if right is not None:
+    if right is not None and right not in wall_cells:
         children.append(right)
 
     down = get_down_cell(cell_number)
-    if down is not None:
+    if down is not None and down not in wall_cells:
         children.append(down)
 
     left = get_left_cell(cell_number)
-    if left is not None:
+    if left is not None and left not in wall_cells:
         children.append(left)
     
     return children
@@ -315,8 +323,28 @@ def get_left_cell(cell_number):
         return (cell_number - 1) # else return previous cell number
 
 
+def paint_child_node_cells(child_node_cells):
+    for child_node_cell in child_node_cells:
+        if child_node_cell is not bot_init_cell and child_node_cell not in goal_cells:
+            cell_x, cell_y = get_top_left_cordinates_given_cell_number(child_node_cell)
+            pygame.draw.rect(window, child_node_blue, pygame.Rect(cell_x, cell_y, line_width, line_width))
+            draw_grid(window, size, num_rows) # because adjust grid lines disappear, so redraw it again
+            pygame.display.update()
+            clock.tick(60)
+
+def paint_path(path):
+    print("path is: ", path)
+    for path_node_cell in path:
+        if path_node_cell is not bot_init_cell and path_node_cell not in goal_cells:
+            cell_x, cell_y = get_top_left_cordinates_given_cell_number(path_node_cell)
+            pygame.draw.rect(window, path_cell_yellow, pygame.Rect(cell_x, cell_y, line_width, line_width))
+            draw_grid(window, size, num_rows) # because adjust grid lines disappear, so redraw it again
+            pygame.display.update()
+            clock.tick(15)
+
+
 def move_bot(cell_to_move):
-    global window, player, close_queue
+    global window, bot, close_queue
 
     # clearing or painint another color for last cell
     if(len(close_queue) > 0):
@@ -326,8 +354,8 @@ def move_bot(cell_to_move):
 
     x, y = get_top_left_cordinates_given_cell_number(cell_to_move)
     print("moving to cell : ", cell_to_move, " of cordinates x: ", x, ", y: ", y, ",  line_width: ", line_width)
-    player = pygame.draw.rect(window, blue, pygame.Rect(x, y, line_width, line_width))
-    print("moved player attributes: player.x: ", player.x, ", player.y: ", player.y)
+    bot = pygame.draw.rect(window, blue, pygame.Rect(x, y, line_width, line_width))
+    print("moved bot attributes: bot.x: ", bot.x, ", bot.y: ", bot.y)
 
 
 
@@ -340,17 +368,20 @@ def get_top_left_cordinates_given_cell_number(cell_to_move):
     return x, y
 
 
-def verify_can_navigate_to_this_from_previous_cell(from_cell, to_cell):
+def verify_to_cell_is_navigatable_from_from_cell(from_cell, to_cell):
+    if (to_cell in wall_cells): # if to_cell is a wall cell, return False
+        return False
+
     if(from_cell + 1 == to_cell): # check to_cell is the right cell
         return True
 
     if(from_cell - 1 == to_cell): # check to_cell is the left cell
         return True
     
-    if(from_cell - 4 == to_cell): # check to_cell is the top / up cell
+    if(from_cell - num_rows == to_cell): # check to_cell is the top / up cell
         return True
 
-    if(from_cell + 4 == to_cell): # check to_cell is the down / bottom cell
+    if(from_cell + num_rows == to_cell): # check to_cell is the down / bottom cell
         return True
     
     return False # Else not navigatable, return False
